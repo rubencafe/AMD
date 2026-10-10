@@ -1,0 +1,27 @@
+# --- Ambiente virtual Python (recria-se com o requirements.txt) ---
+__venv/
+.venv/
+venv/
+env/
+
+# --- Cache / artefactos Python ---
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# --- Dados dos containers (Postgres / pgAdmin), gerados localmente ---
+data_postgres/
+data_pgadmin/
+
+# --- ZIPs de submissão (gerados por _mLDm_xx_build_submission_zip.py) ---
+submitted_*.zip
+
+# --- Segredos / variáveis de ambiente ---
+.env
+
+# --- IDE / sistema operativo ---
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
