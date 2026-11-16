@@ -1,4 +1,4 @@
-COMMAND: C:\me\AMD\mLDm_MoP_workspace\__venv\Scripts\python.exe -c 
+COMMAND: C:\Users\ruben\repos\AMD\mLDm_MoP_workspace\__venv\Scripts\python.exe -c 
 import psycopg
 
 connection = psycopg.connect(
