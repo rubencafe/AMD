@@ -15,7 +15,8 @@
 5. Atualizar este ficheiro sempre que uma tarefa fica concluída ou uma decisão é tomada.
 
 **Estado atual (2026-11-24):** só foi feita a análise e o plano. **Ainda não foi criado nem alterado nenhum
-ficheiro de código.** As decisões em aberto (secção 7) ainda não foram confirmadas pelo utilizador.
+ficheiro de código.** O plano foi reorganizado pelos R01–R10 (secção 6, decisões em 7.2). As decisões D1–D7
+(secção 7.1) ainda não foram confirmadas pelo utilizador.
 
 ---
 
@@ -223,74 +224,117 @@ O notebook chama `_mLDm_00_sns_db_boot.py`; na cópia, apontar para `00_sns_db_b
 
 ---
 
-## 6. Plano de tarefas (marcar `[x]` quando concluído)
+## 6. Plano de tarefas (organizado pelos R, por ordem de execução; marcar `[x]` quando concluído)
 
-### Fase 0 — Ambiente
+> Organização decidida em 2026-11-24 (ver §7.2): o plano segue os requisitos R01–R10, executados pela ordem das
+> dependências. O **R01 passa para o início** como decisão de desenho. O **relatório só é escrito no fim** (Fase 11):
+> durante o trabalho guarda-se apenas a evidência (tabelas, figuras, números) indicada em cada fase.
+>
+> Ordem: Ambiente → R01 → R02 → R03 → R04 → R07 (folds) → R05 (construir) → R06 → R08 (+ comparação do R05) → R09 → R10 → relatório e entrega.
+> O R07 é feito antes do R05/R06 porque o 1R e a comparação de representações têm de usar os mesmos folds temporais.
+
+### Fase 0 — Ambiente (suporte)
 - [ ] T01. Arrancar o Rancher Desktop e o container `mldm_postgres` (`docker compose up -d` em `__container/postgres`).
 - [ ] T02. Criar `02_code/00_sns_db_boot.py` (cópia com `RUNTIME = "docker"`); correr e confirmar a BD `mldm_tep`.
 
-### Fase 1 — `02_code/00_sns_selected_solutions.ipynb` (só dataset A)
-- [ ] T03. Copiar o notebook fornecido e resolver todos os TODO (secção 5).
-- [ ] T04. Confirmar os *expected outputs* (326 692 / 317 239 / 7 684 / níveis / estatísticas de dias).
-- [ ] T05. TODO dos valores extremos: P99/P99.9, padrões por instituição/diagnóstico/idade, impacto em MAE vs RMSE,
-      decisão (proposta: manter os dados; testar `log1p` do alvo via `TransformedTargetRegressor`).
+### Fase 1 — R01: contrato de prediction-time (decisão de desenho)
+- [ ] T03. Definir e documentar, antes de qualquer modelação, o que pode e não pode ser feature:
+      - permitidas: os 5 atributos da unidade de observação e derivados deles (ex.: `year`, `month`,
+        `region` via tabela de referência, `age_group` ordinal);
+      - proibidas: internamentos, ambulatório, dias e óbitos do mês a prever (são eles que definem os alvos);
+        agregados que incluam o mês a prever ou meses futuros; qualquer dado do dataset C;
+      - regra: tudo o que aprende com os dados (OHE, scaling, taxas históricas, regras do 1R) é ajustado só no
+        treino de cada fold (`Pipeline` + `cross_validate`).
+- [ ] T04. Implementar a derivação de features numa função única em `02_code/sns_lib.py` (usada no treino e no deploy)
+      e escolher o risco concreto a relatar no R01. Opcional: experiência de controlo (ajuste fora vs dentro do fold)
+      para mostrar o efeito do leakage.
+- Evidência a guardar: lista de features permitidas/proibidas; (opcional) resultados da experiência de controlo.
 
-### Fase 2 — `02_code/01_sns_build_modelling_datasets.ipynb`
-- [ ] T06. Integração genérica (loop A, B), repetível sem duplicar (DELETE + INSERT por intervalo de `period`:
-      A = [2021-01-01, 2025-01-01[, B = [2025-01-01, 2026-07-01[), lista explícita de correções (Cascais em B),
-      `assert` de que registos integrados = registos de origem.
-- [ ] T07. Gravar `03_output/sns_integration_check.csv`.
-- [ ] T08. Consolidação *worst-case* (mesma view para A e B). **R03**: registos, unidades, repetidas, em excesso, conflitos por
-      dataset; distribuição dos 3 alvos (por dataset e total).
-- [ ] T09. **R04**: regra alternativa (proposta: *best-case*, ordem ascendente, desempate `id ASC`); comparar `has_death`
-      (taxa de positivos, nº de unidades que mudam de classe, por dataset).
-- [ ] T10. Analytical-dataset (5 atributos + 3 alvos). Validar unicidade, alvos (domínios, coerência com contagens),
+### Fase 2 — R02: análise do modelo relacional
+- [ ] T05. Analisar `_mLDm_01_sns_schema.sql` e desenhar o diagrama ER. Relações: region 1 — 0..N institution
+      (institution obriga a region); institution 1 — 0..N source_record; diagnosis 1 — 0..N source_record;
+      `inpatient_level` sem FK (relação lógica por intervalo de `inpatient_ratio`). Identificadores: `region.id`,
+      `institution.id`, `diagnosis.id` (código oficial), `source_record.id`, `inpatient_level.name`; unicidade
+      canónica de nomes via índices sobre `get_canonical_name()`.
+- Evidência a guardar: diagrama ER (figura/PDF em `04_report/`, fora do ZIP).
+- Estado (2026-11-24): rascunho do ER feito (Anexo A); falta desenhá-lo no draw.io e exportar a figura.
+
+### Fase 3 — R03: integração, consolidação e analytical-dataset
+- [ ] T06. Copiar `_mLDm_00_sns_selected_solutions.ipynb` para `02_code/00_sns_selected_solutions.ipynb`, resolver
+      todos os TODO (secção 5) e apontar o boot para `00_sns_db_boot.py`.
+- [ ] T07. Confirmar os *expected outputs* (326 692 / 317 239 / 7 684 / níveis / estatísticas de dias).
+- [ ] T08. TODO dos valores extremos: P99/P99.9, padrões por instituição/diagnóstico/idade, impacto em MAE vs RMSE,
+      decisão (proposta: manter os dados; testar `log1p` do alvo via `TransformedTargetRegressor`).
+- [ ] T09. Em `02_code/01_sns_build_modelling_datasets.ipynb`: integração genérica (loop A, B), repetível sem duplicar
+      (DELETE + INSERT por intervalo de `period`: A = [2021-01-01, 2025-01-01[, B = [2025-01-01, 2026-07-01[),
+      lista explícita de correções (Cascais em B), `assert` de que registos integrados = registos de origem.
+- [ ] T10. Gravar `03_output/sns_integration_check.csv`.
+- [ ] T11. Consolidação *worst-case* (mesma view para A e B) e quantificação por dataset: registos, unidades,
+      repetidas, em excesso, conflitos; distribuição dos 3 alvos (por dataset e total).
+- [ ] T12. Analytical-dataset (5 atributos + 3 alvos). Validar unicidade, alvos (domínios, coerência com as contagens),
       unidades A + B = linhas. Exportar `03_output/sns_analytical_dataset.csv`.
-- [ ] T11. **R05**: modelling-datasets por problema e representação, por exemplo:
+- Evidência a guardar: tabela A/B/total (registos, unidades, repetições, conflitos); distribuição dos alvos;
+  estatísticas dos valores extremos de `num_inpatient_day`.
+
+### Fase 4 — R04: impacto do critério worst-case
+- [ ] T13. Regra alternativa (proposta: *best-case*, ordem ascendente, desempate `id ASC`); comparar `has_death`
+      (taxa de positivos, nº de unidades que mudam de classe, por dataset).
+- Evidência a guardar: tabela worst-case vs alternativa.
+
+### Fase 5 — R07: partições temporais (definição)
+- [ ] T14. Função de folds em `sns_lib.py`, janela expansiva anual: treino ≤2021→teste 2022, ≤2022→2023, ≤2023→2024,
+      ≤2024→2025, ≤2025→2026 (jan–jun). Mesmos folds para todos os modelos de cada problema.
+- Evidência a guardar: tabela de folds (períodos, nº de observações, distribuição dos alvos por fold).
+
+### Fase 6 — R05: representações de features (construção)
+- [ ] T15. Modelling-datasets por problema e representação (gravados em `03_output`, features por codificar), por exemplo:
       (a) só categóricas (institution, diagnosis, age_group, sex);
       (b) + temporais (`year`, `month` ou sin/cos do mês);
       (c) + derivadas (`region` via referência, `age_group` ordinal);
       (d) opcional: taxas históricas (ex.: óbito por instituição×diagnóstico) calculadas só no treino de cada fold.
-      Excluir linhas com `inpatient_level` NULL só no dataset multiclasse. Guardar em `03_output`.
+      Excluir linhas com `inpatient_level` NULL só no dataset multiclasse. A comparação é feita na Fase 8.
+- Evidência a guardar: descrição de cada representação (features, nº de colunas depois da codificação).
 
-### Fase 3 — OneRClassifier
-- [ ] T12. Implementar `OneRClassifier` em `02_code/sns_lib.py` (compatível com sklearn: `BaseEstimator`, `ClassifierMixin`):
+### Fase 7 — R06: OneRClassifier
+- [ ] T16. Implementar `OneRClassifier` em `02_code/sns_lib.py` (compatível com sklearn: `BaseEstimator`, `ClassifierMixin`):
       `fit` com DuckDB `PIVOT` por feature, maioria por linha com desempate determinístico (classes ordenadas), erro total
-      = Σ(total da linha − máximo), escolhe a feature de menor erro (desempate por ordem fixa); `predict` com classe global
-      maioritária para valores não vistos; guardar matrizes/regras para análise.
-- [ ] T13. Validar contra o exemplo do notebook (`id_diagnosis` × `inpatient_level`). **R06**: matrizes de contingência,
-      feature escolhida, erros, comparação com a baseline maioritária, nos dois problemas.
+      = Σ(total da linha − máximo), escolhe a feature de menor erro (desempate por ordem fixa); `predict` com classe
+      maioritária global para valores não vistos; guardar matrizes/regras para análise.
+- [ ] T17. Validar contra o exemplo do notebook (`id_diagnosis` × `inpatient_level`); avaliar com os folds do R07 nos
+      dois problemas de classificação.
+- Evidência a guardar: matrizes de contingência, feature escolhida, erros, comparação com a baseline maioritária, por fold.
 
-### Fase 4 — `02_code/03_sns_temporal_evaluation.ipynb`
-- [ ] T14. **R07**: folds com janela expansiva anuais: treino ≤2021→teste 2022, ≤2022→2023, ≤2023→2024, ≤2024→2025,
-      ≤2025→2026 (jan–jun). Mesmos folds para todos os modelos de cada problema.
-- [ ] T15. `Pipeline` (pré-processamento + modelo) com `cross_validate(cv=folds)`: Dummy (baseline), 1R, Decision Tree,
-      kNN (com scaling), Random Forest; versões de classificação/regressão; grelhas pequenas de hiperparâmetros
-      (ex.: `max_depth`, `min_samples_leaf`, `n_neighbors`, `n_estimators`, `class_weight`). Opcional: outro algoritmo.
-- [ ] T16. Métricas por fold e média ± desvio; guardar resultados em `03_output/`; gráficos por fold.
-      **R08/R09**: comparação com baselines, accuracy vs balanced accuracy/macro-F1, MAE vs RMSE, justificação do modelo escolhido.
+### Fase 8 — R08: modelos vs baselines (e comparação do R05)
+- [ ] T18. `02_code/03_sns_temporal_evaluation.ipynb`: `Pipeline` (pré-processamento + modelo) com
+      `cross_validate(cv=folds)` para cada representação: Dummy (baseline), 1R, Decision Tree, kNN (com scaling),
+      Random Forest; versões de classificação/regressão; grelhas pequenas de hiperparâmetros (ex.: `max_depth`,
+      `min_samples_leaf`, `n_neighbors`, `n_estimators`, `class_weight`). Opcional: outro algoritmo.
+- [ ] T19. Métricas por fold e média ± desvio; guardar resultados em `03_output/`.
+- Evidência a guardar: tabela modelos × representações × métricas vs baselines; accuracy vs balanced accuracy/macro-F1;
+  MAE vs RMSE.
 
-### Fase 5 — Deployment
-- [ ] T17. `02_code/04_sns_final_models.ipynb`: retreinar os 3 pipelines escolhidos com todo A+B; guardar dicionário
+### Fase 9 — R09: variação temporal e seleção
+- [ ] T20. Analisar a variação do desempenho entre folds e escolher o modelo (e representação) de cada problema.
+- Evidência a guardar: gráfico métrica × fold; justificação da escolha.
+
+### Fase 10 — R10: deployment
+- [ ] T21. `02_code/04_sns_final_models.ipynb`: retreinar os 3 pipelines escolhidos com todo A+B; guardar dicionário
       `{inpatient_level, num_inpatient_day, has_death, metadata}` em `03_output/sns_deployed_models.joblib`.
-- [ ] T18. `02_code/02_deployed_predictors.py`: carrega o joblib, valida `_mLDm_00_sns_data_C.csv` (colunas, formato `YYYY-MM`,
+- [ ] T22. `02_code/02_deployed_predictors.py`: carrega o joblib, valida `_mLDm_00_sns_data_C.csv` (colunas, formato `YYYY-MM`,
       domínios), deriva features com a mesma função do treino (`sns_lib.py`), prevê e escreve
       `03_output/_mLDm_00_sns_data_C_prediction.csv` (5 colunas de entrada + 3 alvos, mesma ordem e nº de linhas).
       Decidir o formato de `num_inpatient_day` (proposta: arredondar e limitar a ≥ 0) e `has_death` como inteiro 0/1.
-- [ ] T19. **R10**: demonstrar execução standalone, verificar input/output, ausência de `fit`, e valores não vistos com um
+- [ ] T23. Demonstrar execução standalone, verificar input/output, ausência de `fit`, e valores não vistos com um
       ficheiro sintético à parte (sem alterar C).
+- Evidência a guardar: output do script, verificações, resultado do teste com valores não vistos.
 
-### Fase 6 — Relatório e entrega
-- [ ] T20. **R02**: diagrama ER. Relações: region 1 — 0..N institution (institution obriga a region);
-      institution 1 — 0..N source_record; diagnosis 1 — 0..N source_record; `inpatient_level` sem FK
-      (relação lógica por intervalo de `inpatient_ratio`). Identificadores: `region.id`, `institution.id`, `diagnosis.id`
-      (código oficial), `source_record.id`, `inpatient_level.name`; unicidade canónica de nomes via índices.
-- [ ] T21. `04_report/report.pdf`: capa + ≤ 10 páginas, secções 1–5, R01–R10 por ordem, tabelas/figuras, ficheiros de código.
-      **R01** (proposta): as contagens I/A/óbitos/dias do próprio mês definem os alvos e nunca entram como features;
-      todas as transformações (OHE, scaling, taxas históricas) são ajustadas dentro do fold.
-- [ ] T22. `04_report/README.txt`: ambiente e dependências, inicialização da BD, ordem de execução, execução do
+### Fase 11 — Relatório e entrega (só no fim)
+- [ ] T24. Escrever `04_report/report.pdf` a partir da evidência guardada: capa + ≤ 10 páginas, secções 1–5,
+      R01–R10 por ordem, tabelas/figuras, ficheiros de código relevantes. Orçamento indicativo de páginas:
+      R01 0,5 · R02 1 · R03 1 · R04 0,5 · R05 1 · R06 1,25 · R07 0,5 · R08 1,5 · R09 1,25 · R10 0,75 · ligações 0,75.
+- [ ] T25. `04_report/README.txt`: ambiente e dependências, inicialização da BD, ordem de execução, execução do
       `02_deployed_predictors.py`, ficheiros gerados.
-- [ ] T23. `python _mLDm_xx_build_submission_zip_rev01.py 12` (em `02_code`); verificar `04_report/submission_check.txt`;
+- [ ] T26. `python _mLDm_xx_build_submission_zip_rev01.py 12` (em `02_code`); verificar `04_report/submission_check.txt`;
       testar a reprodução de ponta a ponta numa BD limpa.
 
 ---
@@ -311,7 +355,13 @@ O notebook chama `_mLDm_00_sns_db_boot.py`; na cópia, apontar para `00_sns_db_b
 
 ### 7.2 Tomadas
 
-_(registar aqui: data, decisão, justificação)_
+| Data | Decisão | Justificação |
+|---|---|---|
+| 2026-11-24 | Plano organizado pelos R01–R10, executado pela ordem das dependências (R07 antes de R05/R06; comparação do R05 depois do R08) | o relatório segue os R; executar à letra pela ordem dos R obrigaria a refazer trabalho |
+| 2026-11-24 | R01 passa para o início, como contrato de prediction-time (features permitidas/proibidas, ajuste só no treino de cada fold) | orienta todas as decisões de features, avaliação e deploy desde o arranque |
+| 2026-11-24 | O relatório é escrito só no fim (Fase 11); durante o trabalho guarda-se apenas a evidência de cada R | preferência do utilizador |
+
+_(registar aqui novas decisões: data, decisão, justificação)_
 
 ---
 
@@ -326,3 +376,64 @@ _(registar aqui: data, decisão, justificação)_
 - O último fold (2026) só tem 6 meses: referir na R07/R09.
 - Não usar o dataset C em nenhuma fase antes do deploy.
 - Reprodutibilidade: `random_state` fixo em todos os modelos/amostragens; nada manual fora do README.
+
+---
+
+## Anexo A — Diagrama ER (rascunho para o draw.io, R02)
+
+Notação *crow's foot*, como no ER entregue no MoP_02 (`MoP_02_.../04_report/penguins_ER_model.pdf`), agora com atributos e chaves.
+
+| Relação | Ponta do lado "1" | Ponta do lado "N" | Leitura | Origem no esquema |
+|---|---|---|---|---|
+| region — institution | `ERmandOne` (‖) em region | `ERzeroToMany` (o<) em institution | cada instituição pertence a exatamente 1 região; uma região tem 0..N instituições | `institution.id_region NOT NULL` + FK |
+| institution — source_record | `ERmandOne` em institution | `ERzeroToMany` em source_record | cada registo é de exatamente 1 instituição; uma instituição tem 0..N registos | `source_record.id_institution NOT NULL` + FK |
+| diagnosis — source_record | `ERmandOne` em diagnosis | `ERzeroToMany` em source_record | cada registo tem exatamente 1 capítulo de diagnóstico; um capítulo tem 0..N registos | `source_record.id_diagnosis NOT NULL` + FK |
+| inpatient_level — source_record (linha tracejada) | `ERzeroToOne` (o\|) em inpatient_level | `ERzeroToMany` em source_record | relação lógica, **sem FK**: cada registo cai em 0..1 nível (0 quando I + A = 0); um nível abrange 0..N registos | intervalo `[min_ratio, max_ratio[` sobre `I / (I + A)` |
+
+Notas para o texto da R02:
+- `source_record` tem chave substituta (`id`); a chave natural da unidade de observação
+  `(period, id_institution, id_diagnosis, age_group, sex)` **não** é única por desenho (repetições preservadas; consolidação é um passo posterior).
+- `age_group` e `sex` são atributos com domínio fixo (`CHECK`), não entidades.
+- `diagnosis.id` é o código oficial do capítulo (não gerado); `region.id` e `institution.id` são `IDENTITY`.
+- Unicidade dos nomes também ao nível canónico: índices únicos sobre `get_canonical_name(name/description)`.
+- `inpatient_level` é uma tabela de configuração isolada no modelo relacional.
+
+Fonte mermaid (pode ser colada em draw.io → Organizar → Inserir → Avançado → Mermaid, ou em mermaid.live):
+
+```
+erDiagram
+  REGION ||--o{ INSTITUTION : "agrupa"
+  INSTITUTION ||--o{ SOURCE_RECORD : "reporta"
+  DIAGNOSIS ||--o{ SOURCE_RECORD : "classifica"
+  INPATIENT_LEVEL |o..o{ SOURCE_RECORD : "logica, sem FK"
+  REGION {
+    integer id PK "identity"
+    text name UK "NOT NULL"
+  }
+  INSTITUTION {
+    integer id PK "identity"
+    text name UK "NOT NULL"
+    integer id_region FK "NOT NULL"
+  }
+  DIAGNOSIS {
+    integer id PK "codigo oficial SNS"
+    text description UK "NOT NULL"
+  }
+  SOURCE_RECORD {
+    bigint id PK "identity"
+    date period "NOT NULL, YYYY-MM-01"
+    integer id_institution FK "NOT NULL"
+    integer id_diagnosis FK "NOT NULL"
+    text age_group "CHECK 7 grupos"
+    varchar1 sex "CHECK F, M, I"
+    integer num_inpatient_admission "CHECK >= 0"
+    integer num_inpatient_day "CHECK >= 0"
+    integer num_ambulatory_episode "CHECK >= 0"
+    integer num_death "CHECK >= 0"
+  }
+  INPATIENT_LEVEL {
+    text name PK "low, medium, high"
+    numeric min_ratio "NOT NULL, >= 0"
+    numeric max_ratio "NOT NULL, <= 1"
+  }
+```
